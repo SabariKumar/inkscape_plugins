@@ -4,7 +4,7 @@
 import random
 import math
 import inkex
-from inkex.elements import Group, Rectangle
+from inkex.elements import Group, Rectangle, ClipPath
 from inkex import Circle
 
 # Nord Aurora + Frost — cycled per cluster
@@ -51,6 +51,7 @@ class MakeClusteredPoints(inkex.EffectExtension):
 
         root = self.svg.add(Group.new(label="clustered_points"))
 
+        # Background
         bg = root.add(Rectangle.new(0, 0, W, H))
         bg.style = inkex.Style({
             "fill":         RECT_BG,
@@ -58,17 +59,37 @@ class MakeClusteredPoints(inkex.EffectExtension):
             "stroke-width": str(max(0.5, base * 0.002)),
         })
 
+        # clipPath so points never bleed outside the rectangle
+        clip = self.svg.defs.add(ClipPath())
+        clip.add(Rectangle.new(0, 0, W, H))
+        clip_url = f"url(#{clip.get_id()})"
+
+        # Place cluster centers using rejection sampling to avoid overlap.
+        # Minimum separation = 3 * spread keeps clusters visually distinct.
+        min_dist  = spread * 3.0
+        margin    = spread * 0.5
+        centers   = []
+        max_tries = 500
+
         for i in range(n_c):
-            color  = NORD_CLUSTER_COLORS[i % len(NORD_CLUSTER_COLORS)]
-            margin = spread * 0.5
+            for _ in range(max_tries):
+                cx = rng.uniform(margin, W - margin)
+                cy = rng.uniform(margin, H - margin)
+                if all(math.hypot(cx - ex, cy - ey) >= min_dist for ex, ey in centers):
+                    centers.append((cx, cy))
+                    break
+            else:
+                # Couldn't place without overlap — relax and place anyway
+                centers.append((cx, cy))
 
-            cx = rng.uniform(margin, W - margin)
-            cy = rng.uniform(margin, H - margin)
+        # Draw clusters
+        points_group = root.add(Group.new(label="points"))
+        points_group.set("clip-path", clip_url)
 
-            # Per-cluster sigma sampled from log-normal centred on spread
+        for i, (cx, cy) in enumerate(centers):
+            color = NORD_CLUSTER_COLORS[i % len(NORD_CLUSTER_COLORS)]
             sigma = rng.lognormvariate(math.log(spread), 0.4)
-
-            cluster_group = root.add(Group.new(label=f"cluster_{i+1}"))
+            cluster_group = points_group.add(Group.new(label=f"cluster_{i+1}"))
 
             for _ in range(n_pts):
                 x = rng.gauss(cx, sigma)
