@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import xml.etree.ElementTree as ET; ET.parse\\('make_clustered_points.inx'\\); print\\('INX XML OK'\\)\")"
+    ]
+  }
+}

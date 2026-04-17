@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Make Neural Network</name>
+  <id>org.inkscape.generate.make_neural_network</id>
+
+  <param name="tab" type="notebook">
+    <page name="network" gui-text="Network">
+      <label>Comma-separated node counts per layer, e.g. 3,4,4,2</label>
+      <param name="layers" type="string" gui-text="Nodes per Layer">3,4,4,2</param>
+      <separator/>
+      <param name="connection_type" type="optiongroup" appearance="combo"
+             gui-text="Connections">
+        <option value="none">None</option>
+        <option value="full">Full (all-to-all)</option>
+        <option value="local">Local (i-1, i, i+1)</option>
+      </param>
+      <param name="conn_opacity" type="float" min="0.05" max="1.0" precision="2"
+             appearance="full" gui-text="Connection Opacity">0.25</param>
+      <param name="conn_width"   type="float" min="0.2"  max="10"  precision="1"
+             gui-text="Connection Width (px)">1.0</param>
+    </page>
+
+    <page name="style" gui-text="Style">
+      <param name="node_radius" type="float" min="5"  max="100" precision="1"
+             gui-text="Node Radius (px)">22</param>
+      <param name="h_spacing"   type="float" min="30" max="500" precision="1"
+             gui-text="Horizontal Layer Spacing (px)">130</param>
+      <param name="v_spacing"   type="float" min="20" max="300" precision="1"
+             gui-text="Vertical Node Spacing (px)">65</param>
+    </page>
+  </param>
+
+  <effect>
+    <object-type>all</object-type>
+    <effects-menu>
+      <submenu name="Generate"/>
+    </effects-menu>
+  </effect>
+
+  <script>
+    <command reldir="extensions" interpreter="python">make_neural_network.py</command>
+  </script>
+</inkscape-extension>
