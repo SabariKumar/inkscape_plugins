@@ -20,22 +20,28 @@ from inkex.elements import Group
 _HELPER = """\
 import sys, os, json, base64, tempfile, time
 
-input_type = sys.argv[1]   # 'smiles' or 'sdf'
-mol_input  = sys.argv[2]   # SMILES string OR path to SDF
-show_h     = sys.argv[3].lower() == 'true'
-camera     = sys.argv[4]   # 'default' | 'front' | 'top' | 'perspective'
-width      = int(sys.argv[5])
-height     = int(sys.argv[6])
-DPI        = 600
+input_type        = sys.argv[1]               # 'smiles' or 'sdf'
+mol_input         = sys.argv[2]               # SMILES string OR path to SDF
+show_h            = sys.argv[3].lower() == 'true'
+camera            = sys.argv[4]               # 'default' | 'front' | 'top' | 'perspective'
+width             = int(sys.argv[5])
+height            = int(sys.argv[6])
+show_ensemble     = sys.argv[7].lower() == 'true'
+num_conformers    = int(sys.argv[8])
+conf_transparency = float(sys.argv[9])
+DPI               = 600
 
-sdf_path    = None
-cleanup_sdf = False
+# Ensemble mode is only meaningful with SMILES (need to generate multiple confs)
+ensemble_mode = show_ensemble and input_type == 'smiles' and num_conformers > 1
 
-# ── Step 1: produce an SDF ──────────────────────────────────────────────────
+sdf_paths    = []
+cleanup_sdfs = []
+
+# ── Step 1: produce SDF(s) ──────────────────────────────────────────────────
 if input_type == 'smiles':
     try:
         from rdkit import Chem
-        from rdkit.Chem import AllChem
+        from rdkit.Chem import AllChem, rdMolAlign
     except ImportError:
         print(json.dumps({"error": "rdkit not available in this Python environment."}))
         sys.exit(0)
@@ -47,24 +53,60 @@ if input_type == 'smiles':
 
     mol = Chem.AddHs(mol)
     params = AllChem.ETKDGv3()
-    if AllChem.EmbedMolecule(mol, params) == -1:
-        print(json.dumps({"error": "RDKit ETKDGv3 embedding failed for this SMILES."}))
-        sys.exit(0)
-    AllChem.MMFFOptimizeMolecule(mol)
 
-    tmp_sdf = tempfile.NamedTemporaryFile(suffix='.sdf', delete=False, mode='w')
-    w = Chem.SDWriter(tmp_sdf.name)
-    w.write(mol)
-    w.close()
-    tmp_sdf.close()
-    sdf_path    = tmp_sdf.name
-    cleanup_sdf = True
+    if ensemble_mode:
+        conf_ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=num_conformers,
+                                                    params=params))
+        if not conf_ids:
+            print(json.dumps({"error": "RDKit failed to embed any conformers."}))
+            sys.exit(0)
+
+        # results: [(converged_flag, energy), ...] in conf_id order
+        results = AllChem.MMFFOptimizeMoleculeConfs(mol)
+        scored = [(cid, results[i][1]) for i, cid in enumerate(conf_ids)
+                  if results[i][0] == 0]
+        if not scored:
+            print(json.dumps({"error": "MMFF did not converge for any conformer."}))
+            sys.exit(0)
+        scored.sort(key=lambda x: x[1])     # ascending energy
+
+        # Align all conformers to the lowest-energy one (in-place RMSD min)
+        ref_cid = scored[0][0]
+        for cid, _ in scored[1:]:
+            try:
+                rdMolAlign.AlignMol(mol, mol, prbCid=cid, refCid=ref_cid)
+            except Exception:
+                pass  # alignment isn't critical for rendering
+
+        # Write each conformer to its own SDF, lowest-energy first
+        for cid, _ in scored:
+            tmp = tempfile.NamedTemporaryFile(suffix='.sdf', delete=False, mode='w')
+            w = Chem.SDWriter(tmp.name)
+            w.write(mol, confId=cid)
+            w.close()
+            tmp.close()
+            sdf_paths.append(tmp.name)
+            cleanup_sdfs.append(tmp.name)
+    else:
+        if AllChem.EmbedMolecule(mol, params) == -1:
+            print(json.dumps({"error": "RDKit ETKDGv3 embedding failed for this SMILES."}))
+            sys.exit(0)
+        AllChem.MMFFOptimizeMolecule(mol)
+
+        tmp = tempfile.NamedTemporaryFile(suffix='.sdf', delete=False, mode='w')
+        w = Chem.SDWriter(tmp.name)
+        w.write(mol)
+        w.close()
+        tmp.close()
+        sdf_paths.append(tmp.name)
+        cleanup_sdfs.append(tmp.name)
 
 else:  # 'sdf'
-    sdf_path = mol_input
-    if not os.path.isfile(sdf_path):
-        print(json.dumps({"error": f"SDF file not found: {sdf_path!r}"}))
+    if not os.path.isfile(mol_input):
+        print(json.dumps({"error": f"SDF file not found: {mol_input!r}"}))
         sys.exit(0)
+    sdf_paths.append(mol_input)
+    # not added to cleanup_sdfs — user-provided file, do not delete
 
 # ── Step 2: PyMOL render ────────────────────────────────────────────────────
 tmp_png = None
@@ -80,8 +122,8 @@ try:
 
     # ── Workspace settings from sabari_pymolrc ──────────────────────────────
     cmd.bg_color("white")
-    cmd.set("ray_opaque_background", "off")   # transparent background
-    cmd.set("orthoscopic", 0)                 # perspective projection
+    cmd.set("ray_opaque_background", "off")
+    cmd.set("orthoscopic", 0)
     cmd.set("transparency", 0.5)
     cmd.set("dash_gap", 0)
     cmd.set("ray_trace_mode", 1)
@@ -94,10 +136,7 @@ try:
     cmd.set("reflect", 0.1)
     cmd.space("cmyk")
 
-    cmd.load(sdf_path)
-
-    # ── Bondi VDW radii (from sabari_pymolrc, applied after load) ───────────
-    bondi = {
+    bondi = {  # Bondi VDW radii from sabari_pymolrc
         'Ac':2.00,'Al':2.00,'Am':2.00,'Sb':2.00,'Ar':1.88,'As':1.85,
         'At':2.00,'Ba':2.00,'Bk':2.00,'Be':2.00,'Bi':2.00,'Bh':2.00,
         'B' :2.00,'Br':1.85,'Cd':1.58,'Cs':2.00,'Ca':2.00,'Cf':2.00,
@@ -117,6 +156,11 @@ try:
         'Tl':1.96,'Th':2.00,'Tm':2.00,'Sn':2.17,'Ti':2.00,'W' :2.00,
         'U' :1.86,'V' :2.00,'Xe':2.16,'Yb':2.00,'Y' :2.00,'Zn':1.39,'Zr':2.00,
     }
+
+    # Load each SDF as its own object — conf_0 is the lowest-energy structure
+    for i, sdf_path in enumerate(sdf_paths):
+        cmd.load(sdf_path, f"conf_{i}")
+
     for elem, r in bondi.items():
         cmd.alter(f"elem {elem}", f"vdw={r}")
     cmd.rebuild()
@@ -131,17 +175,22 @@ try:
     cmd.set("surface_quality", 2)
     cmd.set("surface_type", 4)
     cmd.set("depth_cue", "off")
-    preset.ball_and_stick(mode=1)
+    preset.ball_and_stick(selection='all', mode=1)
+
+    # ── Ensemble transparency: opaque conf_0, transparent overlays ──────────
+    if len(sdf_paths) > 1:
+        for i in range(1, len(sdf_paths)):
+            cmd.set("sphere_transparency", conf_transparency, f"conf_{i}")
+            cmd.set("stick_transparency",  conf_transparency, f"conf_{i}")
 
     # ── Camera preset ───────────────────────────────────────────────────────
-    cmd.orient()          # auto-align principal axes (base for all presets)
+    cmd.orient()
     cmd.zoom('all', buffer=2)
 
     if camera == 'top':
-        cmd.rotate('x', -90)   # look straight down from above
+        cmd.rotate('x', -90)
     elif camera == 'perspective':
-        cmd.set('orthoscopic', 0)   # explicit perspective (already default)
-    # 'front' and 'default' keep the orient() result as-is
+        cmd.set('orthoscopic', 0)
 
     # ── Ray-trace and save ──────────────────────────────────────────────────
     tmp_f = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
@@ -150,16 +199,18 @@ try:
 
     cmd.png(tmp_png, width=width, height=height, dpi=DPI, ray=1)
     cmd.quit()
-    time.sleep(0.5)   # small guard in case write hasn't flushed
+    time.sleep(0.5)
 
     with open(tmp_png, 'rb') as fh:
         png_b64 = base64.b64encode(fh.read()).decode()
 
-    print(json.dumps({"png_b64": png_b64, "width": width, "height": height}))
+    # Marker prefix so the plugin can pluck the JSON out of any PyMOL chatter
+    print("__MOL3D_JSON__" + json.dumps({"png_b64": png_b64, "width": width, "height": height}))
 
 finally:
-    if cleanup_sdf and sdf_path and os.path.exists(sdf_path):
-        os.unlink(sdf_path)
+    for p in cleanup_sdfs:
+        if p and os.path.exists(p):
+            os.unlink(p)
     if tmp_png and os.path.exists(tmp_png):
         os.unlink(tmp_png)
 """
@@ -194,7 +245,8 @@ def _find_python(override: str) -> str:
 
 
 def _run_helper(python_cmd, input_type, mol_input,
-                show_h, camera, width, height) -> dict:
+                show_h, camera, width, height,
+                show_ensemble, num_conformers, conf_transparency) -> dict:
     """
     Execute the PyMOL rendering helper in a subprocess and return base64 PNG data.
 
@@ -210,6 +262,9 @@ def _run_helper(python_cmd, input_type, mol_input,
         camera: str : camera preset — "default", "front", "top", or "perspective"
         width: int : render width in pixels
         height: int : render height in pixels
+        show_ensemble: bool : whether to render multiple conformers as overlays
+        num_conformers: int : number of conformers to generate (used only when show_ensemble)
+        conf_transparency: float : transparency [0..1] applied to non-lowest-energy conformers
     Returns:
         dict : {"png_b64": str, "width": int, "height": int} on success,
                or {"error": str} on failure
@@ -226,13 +281,14 @@ def _run_helper(python_cmd, input_type, mol_input,
             [python_cmd, tmp_path,
              input_type, mol_input,
              str(show_h), camera,
-             str(width), str(height)],
+             str(width), str(height),
+             str(show_ensemble), str(num_conformers), str(conf_transparency)],
             capture_output=True,
             text=True,
             timeout=300,   # ray-tracing can be slow
         )
-        stdout = result.stdout.strip()
-        if not stdout:
+        stdout = result.stdout
+        if not stdout.strip():
             return {
                 "error": (
                     f"Helper produced no output.\n"
@@ -240,7 +296,13 @@ def _run_helper(python_cmd, input_type, mol_input,
                     f"stderr: {result.stderr.strip()}"
                 )
             }
-        return json.loads(stdout)
+
+        # PyMOL prints chatter to stdout. Look for the marker prefix; if absent,
+        # fall back to parsing the whole stdout (early errors print plain JSON).
+        marker = "__MOL3D_JSON__"
+        idx = stdout.rfind(marker)
+        payload = stdout[idx + len(marker):].splitlines()[0] if idx >= 0 else stdout.strip()
+        return json.loads(payload)
 
     except FileNotFoundError:
         return {
@@ -274,6 +336,10 @@ class MakeMol3D(inkex.EffectExtension):
     BallnStick(mode=1) preset with Bondi VDW radii, then ray-traces at 600 DPI.
     The result is embedded as a base64 PNG <image> element in the SVG document.
 
+    Ensemble mode (SMILES only) generates multiple conformers, MMFF-optimises them,
+    aligns each to the lowest-energy structure, and renders all of them in PyMOL with
+    the lowest-energy structure opaque and the rest as transparent overlays.
+
     Params:
         input_type: str : "smiles" or "sdf"
         smiles: str : SMILES string (used when input_type is "smiles")
@@ -282,6 +348,9 @@ class MakeMol3D(inkex.EffectExtension):
         camera: str : camera preset — "default", "front", "top", or "perspective"
         render_width: int : output image width in pixels (default 1800 = 3" at 600 DPI)
         render_height: int : output image height in pixels (default 1200 = 2" at 600 DPI)
+        show_ensemble: bool : whether to render a conformer ensemble (SMILES input only)
+        num_conformers: int : number of conformers to generate when show_ensemble is true
+        conformer_transparency: float : transparency for overlay conformers (0 = opaque, 1 = invisible)
         python_cmd: str : override path for the RDKit/PyMOL interpreter; blank = auto-detect
     """
 
@@ -294,15 +363,18 @@ class MakeMol3D(inkex.EffectExtension):
         Returns:
             None
         """
-        pars.add_argument("--tab",           type=str,           default="molecule")
-        pars.add_argument("--input_type",    type=str,           default="smiles")
-        pars.add_argument("--smiles",        type=str,           default="c1ccccc1[N+](=O)[O-]")
-        pars.add_argument("--sdf_file",      type=str,           default="")
-        pars.add_argument("--show_hydrogens",type=inkex.Boolean,  default=False)
-        pars.add_argument("--camera",        type=str,           default="default")
-        pars.add_argument("--render_width",  type=int,           default=1800)
-        pars.add_argument("--render_height", type=int,           default=1200)
-        pars.add_argument("--python_cmd",    type=str,           default="")
+        pars.add_argument("--tab",                    type=str,           default="molecule")
+        pars.add_argument("--input_type",             type=str,           default="smiles")
+        pars.add_argument("--smiles",                 type=str,           default="c1ccccc1[N+](=O)[O-]")
+        pars.add_argument("--sdf_file",               type=str,           default="")
+        pars.add_argument("--show_hydrogens",         type=inkex.Boolean, default=False)
+        pars.add_argument("--camera",                 type=str,           default="default")
+        pars.add_argument("--render_width",           type=int,           default=1800)
+        pars.add_argument("--render_height",          type=int,           default=1200)
+        pars.add_argument("--show_ensemble",          type=inkex.Boolean, default=False)
+        pars.add_argument("--num_conformers",         type=int,           default=10)
+        pars.add_argument("--conformer_transparency", type=float,         default=0.7)
+        pars.add_argument("--python_cmd",             type=str,           default="")
 
     def effect(self):
         """
@@ -342,6 +414,9 @@ class MakeMol3D(inkex.EffectExtension):
             o.camera,
             o.render_width,
             o.render_height,
+            o.show_ensemble,
+            o.num_conformers,
+            o.conformer_transparency,
         )
 
         if "error" in data:

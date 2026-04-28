@@ -1,5 +1,12 @@
 # make_mol_3d
 
+![Conformer ensemble of cyclohexylmethanol](example_ensemble.png)
+
+*Cyclohexylmethanol (`OCC1CCCCC1`) rendered with conformer ensemble enabled
+(8 conformers, 0.7 transparency on overlays). The lowest-energy structure is
+opaque; the rigid ring overlays nearly perfectly, while the rotatable
+hydroxymethyl arm shows the spread of accessible orientations.*
+
 ## Purpose
 
 Generates ray-traced 3D ball-and-stick molecular images inside Inkscape using PyMOL.
@@ -49,6 +56,9 @@ dimensions), and *Advanced* (Python interpreter override).
 | `show_hydrogens` | bool | Include H atoms in render (default: false) |
 | `camera` | str | `"default"`, `"front"`, `"top"`, or `"perspective"` |
 | `render_width` / `render_height` | int | Pixel dimensions; default 1800 × 1200 = 3" × 2" at 600 DPI |
+| `show_ensemble` | bool | Render multiple superimposed conformers (SMILES input only) |
+| `num_conformers` | int | Conformers to generate when ensemble is on (default 10) |
+| `conformer_transparency` | float | Transparency of overlay conformers; 0 = opaque, 1 = invisible (default 0.7) |
 
 **Helper stdout contract:**
 ```json
@@ -79,6 +89,16 @@ with the PNG embedded as a `data:image/png;base64,...` URI.
 - **SMILES with no embeddable 3D geometry** (e.g., highly strained or exotic
   structures where ETKDGv3 fails) will return an error from the helper rather than
   silently producing a bad structure.
+- **Ensemble mode requires SMILES input.** With SDF input the ensemble flag is
+  silently ignored — single-conformer rendering happens regardless. Multi-conformer
+  SDFs are not unpacked.
+- **Ensemble alignment uses `rdMolAlign.AlignMol`** to superimpose each conformer
+  onto the lowest-energy one in RDKit before writing SDFs. PyMOL's `align` is not
+  used (it is sequence-based and unsuitable for small molecules).
+- **Ensemble loads each conformer as a separate PyMOL object** (`conf_0`, `conf_1`, …)
+  so per-object transparency can be applied via `sphere_transparency` and
+  `stick_transparency`. `conf_0` is always the lowest-energy structure and remains
+  opaque.
 
 ## Dependencies on other modules
 

@@ -24,6 +24,24 @@
              gui-text="Show Hydrogens">false</param>
     </page>
 
+    <page name="ensemble" gui-text="Ensemble">
+      <label xml:space="preserve">Render multiple conformers superimposed: the lowest-energy
+structure is opaque, others appear as transparent overlays.
+
+Conformers are generated with RDKit ETKDGv3 + MMFF, sorted by
+energy, then aligned to the lowest-energy structure.
+
+Requires SMILES input — ignored when Input Type is SDF File.</label>
+      <separator/>
+      <param name="show_ensemble" type="bool"
+             gui-text="Show conformer ensemble">false</param>
+      <separator/>
+      <param name="num_conformers" type="int" min="2" max="50"
+             gui-text="Number of Conformers">10</param>
+      <param name="conformer_transparency" type="float" min="0" max="0.95" precision="2"
+             appearance="full" gui-text="Overlay Transparency">0.7</param>
+    </page>
+
     <page name="render" gui-text="Render">
       <param name="camera" type="optiongroup" appearance="combo"
              gui-text="Camera Preset">
