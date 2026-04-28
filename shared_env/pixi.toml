@@ -1,11 +1,14 @@
 [workspace]
 authors = ["Sabari Kumar <sabarinkumar@gmail.com>"]
 channels = ["conda-forge"]
-name = "make_mol_graph"
+name = "inkscape_plugins_env"
 platforms = ["osx-arm64"]
 version = "0.1.0"
 
 [tasks]
 
 [dependencies]
+# Required by: make_mol_graph, make_mol_3d
 rdkit = ">=2023"
+# Required by: make_mol_3d
+pymol-open-source = ">=2.5"

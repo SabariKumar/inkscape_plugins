@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+"""Inkscape plugin: ray-traced 3D ball-and-stick molecular image via PyMOL.
+
+RDKit (3D conformer generation) and PyMOL (rendering) both run in the
+pixi-managed Python environment alongside this script.  See README.md.
+"""
+
+import os
+import json
+import tempfile
+import subprocess
+import inkex
+from inkex.elements import Group
+
+# ---------------------------------------------------------------------------
+# PyMOL / RDKit helper — run in the pixi Python via subprocess
+# ---------------------------------------------------------------------------
+# Workspace settings and BallnStick() replicate sabari_pymolrc exactly.
+
+_HELPER = """\
+import sys, os, json, base64, tempfile, time
+
+input_type = sys.argv[1]   # 'smiles' or 'sdf'
+mol_input  = sys.argv[2]   # SMILES string OR path to SDF
+show_h     = sys.argv[3].lower() == 'true'
+camera     = sys.argv[4]   # 'default' | 'front' | 'top' | 'perspective'
+width      = int(sys.argv[5])
+height     = int(sys.argv[6])
+DPI        = 600
+
+sdf_path    = None
+cleanup_sdf = False
+
+# ── Step 1: produce an SDF ──────────────────────────────────────────────────
+if input_type == 'smiles':
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+    except ImportError:
+        print(json.dumps({"error": "rdkit not available in this Python environment."}))
+        sys.exit(0)
+
+    mol = Chem.MolFromSmiles(mol_input)
+    if mol is None:
+        print(json.dumps({"error": f"Invalid SMILES: {mol_input!r}"}))
+        sys.exit(0)
+
+    mol = Chem.AddHs(mol)
+    params = AllChem.ETKDGv3()
+    if AllChem.EmbedMolecule(mol, params) == -1:
+        print(json.dumps({"error": "RDKit ETKDGv3 embedding failed for this SMILES."}))
+        sys.exit(0)
+    AllChem.MMFFOptimizeMolecule(mol)
+
+    tmp_sdf = tempfile.NamedTemporaryFile(suffix='.sdf', delete=False, mode='w')
+    w = Chem.SDWriter(tmp_sdf.name)
+    w.write(mol)
+    w.close()
+    tmp_sdf.close()
+    sdf_path    = tmp_sdf.name
+    cleanup_sdf = True
+
+else:  # 'sdf'
+    sdf_path = mol_input
+    if not os.path.isfile(sdf_path):
+        print(json.dumps({"error": f"SDF file not found: {sdf_path!r}"}))
+        sys.exit(0)
+
+# ── Step 2: PyMOL render ────────────────────────────────────────────────────
+tmp_png = None
+try:
+    try:
+        import pymol
+        from pymol import cmd, preset
+    except ImportError:
+        print(json.dumps({"error": "pymol not available in this Python environment."}))
+        sys.exit(0)
+
+    pymol.finish_launching(['pymol', '-cq'])
+
+    # ── Workspace settings from sabari_pymolrc ──────────────────────────────
+    cmd.bg_color("white")
+    cmd.set("ray_opaque_background", "off")   # transparent background
+    cmd.set("orthoscopic", 0)                 # perspective projection
+    cmd.set("transparency", 0.5)
+    cmd.set("dash_gap", 0)
+    cmd.set("ray_trace_mode", 1)
+    cmd.set("ray_texture", 2)
+    cmd.set("antialias", 3)
+    cmd.set("ambient", 0.5)
+    cmd.set("spec_count", 5)
+    cmd.set("shininess", 50)
+    cmd.set("specular", 1)
+    cmd.set("reflect", 0.1)
+    cmd.space("cmyk")
+
+    cmd.load(sdf_path)
+
+    # ── Bondi VDW radii (from sabari_pymolrc, applied after load) ───────────
+    bondi = {
+        'Ac':2.00,'Al':2.00,'Am':2.00,'Sb':2.00,'Ar':1.88,'As':1.85,
+        'At':2.00,'Ba':2.00,'Bk':2.00,'Be':2.00,'Bi':2.00,'Bh':2.00,
+        'B' :2.00,'Br':1.85,'Cd':1.58,'Cs':2.00,'Ca':2.00,'Cf':2.00,
+        'C' :1.70,'Ce':2.00,'Cl':1.75,'Cr':2.00,'Co':2.00,'Cu':1.40,
+        'Cm':2.00,'Ds':2.00,'Db':2.00,'Dy':2.00,'Es':2.00,'Er':2.00,
+        'Eu':2.00,'Fm':2.00,'F' :1.47,'Fr':2.00,'Gd':2.00,'Ga':1.87,
+        'Ge':2.00,'Au':1.66,'Hf':2.00,'Hs':2.00,'He':1.40,'Ho':2.00,
+        'In':1.93,'I' :1.98,'Ir':2.00,'Fe':2.00,'Kr':2.02,'La':2.00,
+        'Lr':2.00,'Pb':2.02,'Li':1.82,'Lu':2.00,'Mg':1.73,'Mn':2.00,
+        'Mt':2.00,'Md':2.00,'Hg':1.55,'Mo':2.00,'Nd':2.00,'Ne':1.54,
+        'Np':2.00,'Ni':1.63,'Nb':2.00,'N' :1.55,'No':2.00,'Os':2.00,
+        'O' :1.52,'Pd':1.63,'P' :1.80,'Pt':1.72,'Pu':2.00,'Po':2.00,
+        'K' :2.75,'Pr':2.00,'Pm':2.00,'Pa':2.00,'Ra':2.00,'Rn':2.00,
+        'Re':2.00,'Rh':2.00,'Rb':2.00,'Ru':2.00,'Rf':2.00,'Sm':2.00,
+        'Sc':2.00,'Sg':2.00,'Se':1.90,'Si':2.10,'Ag':1.72,'Na':2.27,
+        'Sr':2.00,'S' :1.80,'Ta':2.00,'Tc':2.00,'Te':2.06,'Tb':2.00,
+        'Tl':1.96,'Th':2.00,'Tm':2.00,'Sn':2.17,'Ti':2.00,'W' :2.00,
+        'U' :1.86,'V' :2.00,'Xe':2.16,'Yb':2.00,'Y' :2.00,'Zn':1.39,'Zr':2.00,
+    }
+    for elem, r in bondi.items():
+        cmd.alter(f"elem {elem}", f"vdw={r}")
+    cmd.rebuild()
+
+    if not show_h:
+        cmd.remove('elem H')
+
+    # ── BallnStick() from sabari_pymolrc ────────────────────────────────────
+    cmd.color("gray30", "elem C")
+    cmd.set("dash_gap", 0.01)
+    cmd.set("dash_radius", 0.035)
+    cmd.set("surface_quality", 2)
+    cmd.set("surface_type", 4)
+    cmd.set("depth_cue", "off")
+    preset.ball_and_stick(mode=1)
+
+    # ── Camera preset ───────────────────────────────────────────────────────
+    cmd.orient()          # auto-align principal axes (base for all presets)
+    cmd.zoom('all', buffer=2)
+
+    if camera == 'top':
+        cmd.rotate('x', -90)   # look straight down from above
+    elif camera == 'perspective':
+        cmd.set('orthoscopic', 0)   # explicit perspective (already default)
+    # 'front' and 'default' keep the orient() result as-is
+
+    # ── Ray-trace and save ──────────────────────────────────────────────────
+    tmp_f = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    tmp_f.close()
+    tmp_png = tmp_f.name
+
+    cmd.png(tmp_png, width=width, height=height, dpi=DPI, ray=1)
+    cmd.quit()
+    time.sleep(0.5)   # small guard in case write hasn't flushed
+
+    with open(tmp_png, 'rb') as fh:
+        png_b64 = base64.b64encode(fh.read()).decode()
+
+    print(json.dumps({"png_b64": png_b64, "width": width, "height": height}))
+
+finally:
+    if cleanup_sdf and sdf_path and os.path.exists(sdf_path):
+        os.unlink(sdf_path)
+    if tmp_png and os.path.exists(tmp_png):
+        os.unlink(tmp_png)
+"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _find_python(override: str) -> str:
+    if override and override.strip():
+        return override.strip()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    for candidate in [
+        os.path.join(script_dir, ".pixi", "envs", "default", "bin", "python"),
+        os.path.join(script_dir, ".pixi", "envs", "default", "python.exe"),
+    ]:
+        if os.path.isfile(candidate):
+            return candidate
+    return "python3"
+
+
+def _run_helper(python_cmd, input_type, mol_input,
+                show_h, camera, width, height) -> dict:
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False
+        ) as fh:
+            fh.write(_HELPER)
+            tmp_path = fh.name
+
+        result = subprocess.run(
+            [python_cmd, tmp_path,
+             input_type, mol_input,
+             str(show_h), camera,
+             str(width), str(height)],
+            capture_output=True,
+            text=True,
+            timeout=300,   # ray-tracing can be slow
+        )
+        stdout = result.stdout.strip()
+        if not stdout:
+            return {
+                "error": (
+                    f"Helper produced no output.\n"
+                    f"Python: {python_cmd}\n"
+                    f"stderr: {result.stderr.strip()}"
+                )
+            }
+        return json.loads(stdout)
+
+    except FileNotFoundError:
+        return {
+            "error": (
+                f"Python interpreter not found: {python_cmd!r}\n"
+                "Run 'pixi install' in the plugin directory, then redeploy."
+            )
+        }
+    except subprocess.TimeoutExpired:
+        return {"error": "Timed out during ray-tracing (>5 min)."}
+    except json.JSONDecodeError as exc:
+        return {"error": f"Could not parse helper output: {exc}\n"
+                         f"stderr: {result.stderr.strip()}"}
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Extension
+# ---------------------------------------------------------------------------
+
+class MakeMol3D(inkex.EffectExtension):
+
+    def add_arguments(self, pars):
+        pars.add_argument("--tab",           type=str,           default="molecule")
+        pars.add_argument("--input_type",    type=str,           default="smiles")
+        pars.add_argument("--smiles",        type=str,           default="c1ccccc1[N+](=O)[O-]")
+        pars.add_argument("--sdf_file",      type=str,           default="")
+        pars.add_argument("--show_hydrogens",type=inkex.Boolean,  default=False)
+        pars.add_argument("--camera",        type=str,           default="default")
+        pars.add_argument("--render_width",  type=int,           default=1800)
+        pars.add_argument("--render_height", type=int,           default=1200)
+        pars.add_argument("--python_cmd",    type=str,           default="")
+
+    def effect(self):
+        o = self.options
+
+        python_cmd = _find_python(o.python_cmd)
+
+        if o.input_type == "sdf":
+            mol_input = o.sdf_file.strip()
+            if not mol_input:
+                inkex.errormsg("SDF File path is empty. "
+                               "Select a file or switch Input Type to SMILES.")
+                return
+        else:
+            mol_input = o.smiles.strip()
+            if not mol_input:
+                inkex.errormsg("SMILES string is empty.")
+                return
+
+        data = _run_helper(
+            python_cmd,
+            o.input_type,
+            mol_input,
+            o.show_hydrogens,
+            o.camera,
+            o.render_width,
+            o.render_height,
+        )
+
+        if "error" in data:
+            inkex.errormsg(data["error"])
+            return
+
+        png_b64 = data["png_b64"]
+        W       = data["width"]
+        H       = data["height"]
+
+        # Embed as base64 <image> in the SVG
+        root = self.svg.add(Group.new(label="mol_3d"))
+        img  = root.add(inkex.Image())
+        img.set("x", "0")
+        img.set("y", "0")
+        img.set("width",  str(W))
+        img.set("height", str(H))
+        # Set both href forms for maximum Inkscape compatibility
+        img.set("href", f"data:image/png;base64,{png_b64}")
+        img.set("{http://www.w3.org/1999/xlink}href",
+                f"data:image/png;base64,{png_b64}")
+
+
+if __name__ == "__main__":
+    MakeMol3D().run()

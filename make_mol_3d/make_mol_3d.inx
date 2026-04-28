@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Make Molecular 3D</name>
+  <id>org.inkscape.generate.make_mol_3d</id>
+
+  <param name="tab" type="notebook">
+
+    <page name="molecule" gui-text="Molecule">
+      <param name="input_type" type="optiongroup" appearance="combo"
+             gui-text="Input Type">
+        <option value="smiles">SMILES String</option>
+        <option value="sdf">SDF File</option>
+      </param>
+      <separator/>
+      <label>Used when Input Type is SMILES. 3D geometry is generated with RDKit ETKDGv3 + MMFF.</label>
+      <param name="smiles" type="string"
+             gui-text="SMILES">c1ccccc1[N+](=O)[O-]</param>
+      <separator/>
+      <label>Used when Input Type is SDF File.</label>
+      <param name="sdf_file" type="path" mode="file" filetypes="sdf"
+             gui-text="SDF File">.</param>
+      <separator/>
+      <param name="show_hydrogens" type="bool"
+             gui-text="Show Hydrogens">false</param>
+    </page>
+
+    <page name="render" gui-text="Render">
+      <param name="camera" type="optiongroup" appearance="combo"
+             gui-text="Camera Preset">
+        <option value="default">PyMOL Default (auto-orient)</option>
+        <option value="front">Front</option>
+        <option value="top">Top</option>
+        <option value="perspective">Perspective</option>
+      </param>
+      <separator/>
+      <label>Output resolution at 600 DPI. e.g. 1800 x 1200 = 3" x 2".</label>
+      <param name="render_width"  type="int" min="200" max="8000"
+             gui-text="Render Width (px)">1800</param>
+      <param name="render_height" type="int" min="200" max="8000"
+             gui-text="Render Height (px)">1200</param>
+    </page>
+
+    <page name="advanced" gui-text="Advanced">
+      <label xml:space="preserve">Path to the Python interpreter that has RDKit and PyMOL installed.
+
+Leave blank to auto-detect the pixi environment bundled with this plugin (.pixi/envs/default/bin/python).
+
+Set manually if you prefer to use your own environment.</label>
+      <param name="python_cmd" type="string"
+             gui-text="Python Path (blank = auto)"></param>
+    </page>
+
+  </param>
+
+  <effect>
+    <object-type>all</object-type>
+    <effects-menu>
+      <submenu name="Generate"/>
+    </effects-menu>
+  </effect>
+
+  <script>
+    <command reldir="extensions" interpreter="python">make_mol_3d.py</command>
+  </script>
+</inkscape-extension>
