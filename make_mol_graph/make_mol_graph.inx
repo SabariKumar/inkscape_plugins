@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Make Molecular Graph</name>
+  <id>org.inkscape.generate.make_mol_graph</id>
+
+  <param name="tab" type="notebook">
+
+    <page name="molecule" gui-text="Molecule">
+      <label>SMILES string for the molecule to draw.</label>
+      <param name="smiles" type="string"
+             gui-text="SMILES">c1ccccc1[N+](=O)[O-]</param>
+      <separator/>
+      <param name="show_hydrogens" type="bool"
+             gui-text="Show Hydrogens">false</param>
+      <param name="render_atomic_symbols" type="bool"
+             gui-text="Render Atomic Symbols">false</param>
+      <param name="show_carbon_labels" type="bool"
+             gui-text="Show Carbon Labels">false</param>
+      <param name="render_bond_order" type="bool"
+             gui-text="Render Bond Order (double / triple lines)">false</param>
+    </page>
+
+    <page name="style" gui-text="Style">
+      <label>Scale: pixels per RDKit coordinate unit (~1.5 Å per bond length).</label>
+      <param name="scale" type="float" min="10" max="200" precision="1"
+             appearance="full" gui-text="Scale (px / unit)">50</param>
+      <separator/>
+      <param name="atom_radius" type="float" min="3" max="120" precision="1"
+             appearance="full" gui-text="Atom Radius (px)">36</param>
+      <separator/>
+      <param name="bond_width" type="float" min="0.2" max="10" precision="1"
+             gui-text="Bond Width (px)">1.0</param>
+      <param name="bond_spacing" type="float" min="1" max="15" precision="1"
+             gui-text="Double-Bond Spacing (px)">4</param>
+    </page>
+
+    <page name="advanced" gui-text="Advanced">
+      <label xml:space="preserve">Path to the Python interpreter that has RDKit installed.
+
+Leave blank to auto-detect the pixi environment bundled with this plugin (.pixi/envs/default/bin/python).
+
+Set manually if you prefer to use your own environment.</label>
+      <param name="python_cmd" type="string"
+             gui-text="Python Path (blank = auto)"></param>
+    </page>
+
+  </param>
+
+  <effect>
+    <object-type>all</object-type>
+    <effects-menu>
+      <submenu name="Generate"/>
+    </effects-menu>
+  </effect>
+
+  <script>
+    <command reldir="extensions" interpreter="python">make_mol_graph.py</command>
+  </script>
+</inkscape-extension>

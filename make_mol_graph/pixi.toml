@@ -1,0 +1,11 @@
+[workspace]
+authors = ["Sabari Kumar <sabarinkumar@gmail.com>"]
+channels = ["conda-forge"]
+name = "make_mol_graph"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+rdkit = ">=2023"

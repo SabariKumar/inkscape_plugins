@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mol-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "7823", "--directory", "/Users/sabari/Documents/Projects/inkscape_plugins/make_mol_graph"],
+      "port": 7823
+    }
+  ]
+}
