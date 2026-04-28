@@ -92,12 +92,13 @@ unless RDKit happens to be installed there.
 |-----|-----------|---------|-------------|
 | Molecule | SMILES | `c1ccccc1[N+](=O)[O-]` | Any valid SMILES string |
 | Molecule | Show Hydrogens | off | Add explicit H atoms |
-| Molecule | Show Atom Labels | on | Draw element symbols |
-| Molecule | Show Carbon Labels | off | Label C atoms (usually omitted in chemistry) |
+| Molecule | Render Atomic Symbols | off | Draw element symbols on atoms |
+| Molecule | Show Carbon Labels | off | Label C atoms (only active when Render Atomic Symbols is on) |
+| Molecule | Render Bond Order | off | Draw double/triple bonds as parallel lines |
 | Style | Scale | 50 | px per RDKit coordinate unit (~1.5 Å per bond) |
-| Style | Atom Radius | 12 px | Base circle size (scaled per element) |
+| Style | Atom Radius | 36 px | Base circle size (scaled per element) |
 | Style | Bond Width | 1.0 px | Line thickness — matches the neural network plugin default |
-| Style | Double-Bond Spacing | 4 px | Gap between parallel lines for double/triple bonds |
+| Style | Double-Bond Spacing | 4 px | Gap between parallel lines (only used when Render Bond Order is on) |
 | Advanced | Python Path | *(blank)* | Override the auto-detected interpreter path |
 
 ### Atom colors (pastel CPK)
