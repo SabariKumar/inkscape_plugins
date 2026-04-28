@@ -170,6 +170,17 @@ finally:
 # ---------------------------------------------------------------------------
 
 def _find_python(override: str) -> str:
+    """
+    Return the path to a Python interpreter that has RDKit and PyMOL installed.
+
+    Checks the user override first, then the bundled pixi environment
+    co-located with this script, then falls back to system python3.
+
+    Params:
+        override: str : explicit interpreter path from the plugin UI, or empty string
+    Returns:
+        str : absolute path to a Python executable
+    """
     if override and override.strip():
         return override.strip()
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -184,6 +195,25 @@ def _find_python(override: str) -> str:
 
 def _run_helper(python_cmd, input_type, mol_input,
                 show_h, camera, width, height) -> dict:
+    """
+    Execute the PyMOL rendering helper in a subprocess and return base64 PNG data.
+
+    Writes _HELPER to a temp file, runs it with python_cmd, reads the single
+    JSON line from stdout, and deletes the temp file unconditionally.
+    Ray-tracing can be slow; the subprocess is allowed up to 300 seconds.
+
+    Params:
+        python_cmd: str : path to the Python interpreter to use
+        input_type: str : "smiles" or "sdf"
+        mol_input: str : SMILES string or absolute path to an SDF file
+        show_h: bool : whether to show hydrogen atoms in the render
+        camera: str : camera preset — "default", "front", "top", or "perspective"
+        width: int : render width in pixels
+        height: int : render height in pixels
+    Returns:
+        dict : {"png_b64": str, "width": int, "height": int} on success,
+               or {"error": str} on failure
+    """
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -234,8 +264,36 @@ def _run_helper(python_cmd, input_type, mol_input,
 # ---------------------------------------------------------------------------
 
 class MakeMol3D(inkex.EffectExtension):
+    """
+    Inkscape effect extension that embeds a ray-traced 3D molecular image via PyMOL.
+
+    For SMILES input, RDKit generates a 3D conformer using ETKDGv3 followed by MMFF
+    geometry optimisation before passing the structure to PyMOL. For SDF input the
+    file is loaded directly. PyMOL applies the sabari_pymolrc workspace settings
+    (ray_trace_mode=1, ray_texture=2, antialias=3, CMYK color space) and the
+    BallnStick(mode=1) preset with Bondi VDW radii, then ray-traces at 600 DPI.
+    The result is embedded as a base64 PNG <image> element in the SVG document.
+
+    Params:
+        input_type: str : "smiles" or "sdf"
+        smiles: str : SMILES string (used when input_type is "smiles")
+        sdf_file: str : path to an SDF file (used when input_type is "sdf")
+        show_hydrogens: bool : whether to include hydrogen atoms in the render
+        camera: str : camera preset — "default", "front", "top", or "perspective"
+        render_width: int : output image width in pixels (default 1800 = 3" at 600 DPI)
+        render_height: int : output image height in pixels (default 1200 = 2" at 600 DPI)
+        python_cmd: str : override path for the RDKit/PyMOL interpreter; blank = auto-detect
+    """
 
     def add_arguments(self, pars):
+        """
+        Register extension parameters from the INX manifest.
+
+        Params:
+            pars: argparse.ArgumentParser : Inkscape-provided argument parser
+        Returns:
+            None
+        """
         pars.add_argument("--tab",           type=str,           default="molecule")
         pars.add_argument("--input_type",    type=str,           default="smiles")
         pars.add_argument("--smiles",        type=str,           default="c1ccccc1[N+](=O)[O-]")
@@ -247,6 +305,19 @@ class MakeMol3D(inkex.EffectExtension):
         pars.add_argument("--python_cmd",    type=str,           default="")
 
     def effect(self):
+        """
+        Generate the ray-traced molecular image and embed it in the document.
+
+        Validates input, delegates rendering to _run_helper, then inserts an SVG
+        <image> element with both href and xlink:href set for compatibility across
+        Inkscape versions. The PNG is embedded as a base64 data URI so the document
+        is fully self-contained with no external file references.
+
+        Params:
+            None
+        Returns:
+            None
+        """
         o = self.options
 
         python_cmd = _find_python(o.python_cmd)

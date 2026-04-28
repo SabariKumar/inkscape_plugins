@@ -23,8 +23,33 @@ NORD_MID   = "#4C566A"  # connection stroke
 
 
 class MakeNeuralNetwork(inkex.EffectExtension):
+    """
+    Inkscape effect extension that draws a stylized neural network schematic.
+
+    Layers are arranged as vertical columns of circles spaced horizontally.
+    Canvas size is computed automatically from the topology so the diagram is
+    always vertically centred with consistent padding. Connections are drawn
+    before nodes so node circles naturally occlude line endpoints.
+
+    Params:
+        layers: str : comma-separated node counts per layer, e.g. "3,4,4,2"
+        connection_type: str : "none", "full" (all-to-all), or "local" (±1 neighbor)
+        conn_opacity: float : stroke opacity for connection lines
+        conn_width: float : stroke width for connection lines in pixels
+        node_radius: float : radius of each node circle in pixels
+        h_spacing: float : horizontal distance between layer centers in pixels
+        v_spacing: float : vertical distance between node centers in pixels
+    """
 
     def add_arguments(self, pars):
+        """
+        Register extension parameters from the INX manifest.
+
+        Params:
+            pars: argparse.ArgumentParser : Inkscape-provided argument parser
+        Returns:
+            None
+        """
         pars.add_argument("--tab",             type=str,   default="network")
         pars.add_argument("--layers",          type=str,   default="3,4,4,2")
         pars.add_argument("--connection_type", type=str,   default="full")
@@ -35,6 +60,19 @@ class MakeNeuralNetwork(inkex.EffectExtension):
         pars.add_argument("--v_spacing",       type=float, default=65.0)
 
     def effect(self):
+        """
+        Generate the neural network SVG and add it to the document.
+
+        Parses the layer topology string, computes centred node positions for each
+        layer, then draws connections followed by node circles. For local connectivity,
+        each source node maps to a proportionally scaled target index and connects to
+        that index ±1, clamped to valid range.
+
+        Params:
+            None
+        Returns:
+            None
+        """
         o = self.options
 
         try:

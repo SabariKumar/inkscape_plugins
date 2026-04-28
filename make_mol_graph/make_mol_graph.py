@@ -100,12 +100,16 @@ print(json.dumps({"atoms": atoms, "bonds": bonds}))
 
 
 def _find_python(override: str) -> str:
-    """Return path to a Python with RDKit.
+    """
+    Return the path to a Python interpreter that has RDKit installed.
 
-    Priority:
-      1. Explicit override from the plugin UI (if non-empty).
-      2. pixi environment bundled next to this script file.
-      3. System 'python3' as a last resort.
+    Checks the user override first, then the bundled pixi environment
+    co-located with this script, then falls back to system python3.
+
+    Params:
+        override: str : explicit interpreter path from the plugin UI, or empty string
+    Returns:
+        str : absolute path to a Python executable
     """
     if override and override.strip():
         return override.strip()
@@ -123,7 +127,19 @@ def _find_python(override: str) -> str:
 
 
 def _run_rdkit(smiles: str, remove_h: bool, python_cmd: str) -> dict:
-    """Write the helper to a temp file, run it, parse the JSON result."""
+    """
+    Execute the RDKit helper in a subprocess and return parsed atom/bond data.
+
+    Writes _RDKIT_HELPER to a temp file, runs it with python_cmd, reads the
+    single JSON line from stdout, and deletes the temp file unconditionally.
+
+    Params:
+        smiles: str : SMILES string to parse and embed in 2D
+        remove_h: bool : whether to strip explicit hydrogens before output
+        python_cmd: str : path to the Python interpreter to use
+    Returns:
+        dict : {"atoms": [...], "bonds": [...]} on success, or {"error": str} on failure
+    """
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -171,7 +187,20 @@ def _run_rdkit(smiles: str, remove_h: bool, python_cmd: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _perp(x1, y1, x2, y2):
-    """Return the perpendicular unit vector to the segment (x1,y1)→(x2,y2)."""
+    """
+    Return the perpendicular unit vector to the segment (x1,y1)→(x2,y2).
+
+    Used to offset parallel lines when rendering double and triple bonds.
+    Returns (0.0, 1.0) for a zero-length segment to avoid division by zero.
+
+    Params:
+        x1: float : x-coordinate of segment start
+        y1: float : y-coordinate of segment start
+        x2: float : x-coordinate of segment end
+        y2: float : y-coordinate of segment end
+    Returns:
+        tuple[float, float] : (px, py) perpendicular unit vector
+    """
     dx, dy = x2 - x1, y2 - y1
     length = math.hypot(dx, dy)
     if length == 0:
@@ -180,6 +209,25 @@ def _perp(x1, y1, x2, y2):
 
 
 def _draw_bond(group, x1, y1, x2, y2, bond_type, width, spacing):
+    """
+    Draw a bond between two atom positions into the given SVG group.
+
+    Single and aromatic bonds produce one centered line. Double bonds produce
+    two parallel lines offset by ±spacing/2 along the perpendicular vector.
+    Triple bonds produce three lines: one central and two offset by ±spacing.
+
+    Params:
+        group: inkex.elements.Group : parent SVG group to add path elements to
+        x1: float : x-coordinate of the first atom center
+        y1: float : y-coordinate of the first atom center
+        x2: float : x-coordinate of the second atom center
+        y2: float : y-coordinate of the second atom center
+        bond_type: str : one of "single", "aromatic", "double", "triple"
+        width: float : stroke width in pixels
+        spacing: float : separation between parallel lines for multi-order bonds
+    Returns:
+        None
+    """
     px, py = _perp(x1, y1, x2, y2)
 
     def line(ax, ay, bx, by):
@@ -211,8 +259,36 @@ def _draw_bond(group, x1, y1, x2, y2, bond_type, width, spacing):
 # ---------------------------------------------------------------------------
 
 class MakeMolGraph(inkex.EffectExtension):
+    """
+    Inkscape effect extension that draws a stylized 2D molecular graph from a SMILES string.
+
+    RDKit runs in a subprocess (pixi-managed Python) to parse the SMILES, compute
+    2D coordinates, and kekulize bond orders. Atoms are rendered as pastel CPK-colored
+    circles; bonds are drawn as gray SVG paths with optional parallel lines for
+    double/triple bond order. Aromatic bonds are treated as single lines by default.
+
+    Params:
+        smiles: str : SMILES string for the molecule to draw
+        show_hydrogens: bool : whether to include explicit hydrogen atoms
+        render_atomic_symbols: bool : whether to draw element labels on atoms
+        show_carbon_labels: bool : whether to label carbon atoms (requires render_atomic_symbols)
+        render_bond_order: bool : whether to draw double/triple bonds as parallel lines
+        scale: float : pixels per RDKit coordinate unit (~1.5 Å per bond length)
+        atom_radius: float : base circle radius in pixels, scaled per element by ATOM_RADIUS_SCALE
+        bond_width: float : bond stroke width in pixels
+        bond_spacing: float : gap between parallel lines for multi-order bonds in pixels
+        python_cmd: str : override path for the RDKit Python interpreter; blank = auto-detect
+    """
 
     def add_arguments(self, pars):
+        """
+        Register extension parameters from the INX manifest.
+
+        Params:
+            pars: argparse.ArgumentParser : Inkscape-provided argument parser
+        Returns:
+            None
+        """
         pars.add_argument("--tab",                type=str,          default="molecule")
         pars.add_argument("--smiles",             type=str,          default="c1ccccc1[N+](=O)[O-]")
         pars.add_argument("--show_hydrogens",       type=inkex.Boolean, default=False)
@@ -226,6 +302,18 @@ class MakeMolGraph(inkex.EffectExtension):
         pars.add_argument("--python_cmd",         type=str,          default="")
 
     def effect(self):
+        """
+        Generate the molecular graph SVG and add it to the document.
+
+        Calls _run_rdkit to obtain atom positions and bond topology, applies
+        a y-axis flip to convert RDKit (y-up) coordinates to SVG (y-down) space,
+        draws bonds first then atom circles and optional labels on top.
+
+        Params:
+            None
+        Returns:
+            None
+        """
         o = self.options
 
         python_cmd = _find_python(o.python_cmd)
