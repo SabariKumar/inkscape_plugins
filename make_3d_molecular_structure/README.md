@@ -1,4 +1,4 @@
-# make_mol_3d
+# make_3d_molecular_structure
 
 ![Conformer ensemble of cyclohexylmethanol](example_ensemble.png)
 
@@ -18,8 +18,9 @@ and the `BallnStick(mode=1)` preset.
 
 ## Module contents
 
-**`make_mol_3d.py`** — Main extension file. Contains the embedded `_HELPER` script
-(a string literal), two module-level functions, and the `MakeMol3D` extension class.
+**`make_3d_molecular_structure.py`** — Main extension file. Contains the embedded
+`_HELPER` script (a string literal), two module-level functions, and the
+`Make3DMolecularStructure` extension class.
 
 - `_HELPER`: Complete Python script run in the pixi subprocess. Handles both input
   branches (SMILES → RDKit ETKDGv3 + MMFF → SDF; or direct SDF load), applies all
@@ -36,13 +37,14 @@ and the `BallnStick(mode=1)` preset.
   errors — import failures, invalid input, timeouts — are returned as
   `{"error": str}` and surfaced to the user via `inkex.errormsg`.
 
-- `MakeMol3D`: The Inkscape extension class. Validates input, calls `_run_helper`,
-  and inserts an SVG `<image>` element with both `href` and `xlink:href` attributes
-  set for compatibility across Inkscape versions.
+- `Make3DMolecularStructure`: The Inkscape extension class. Validates input, calls
+  `_run_helper`, and inserts an SVG `<image>` element with both `href` and
+  `xlink:href` attributes set for compatibility across Inkscape versions.
 
-**`make_mol_3d.inx`** — Inkscape manifest with three tabs: *Molecule* (input type,
-SMILES field, SDF file picker, hydrogen toggle), *Render* (camera preset, pixel
-dimensions), and *Advanced* (Python interpreter override).
+**`make_3d_molecular_structure.inx`** — Inkscape manifest with four tabs: *Molecule*
+(input type, SMILES field, SDF file picker, hydrogen toggle), *Ensemble* (conformer
+ensemble toggle, conformer count, overlay transparency slider), *Render* (camera
+preset, pixel dimensions), and *Advanced* (Python interpreter override).
 
 ## Data contracts
 
@@ -69,7 +71,7 @@ Or on failure:
 {"error": "<message>"}
 ```
 
-**Output:** a `<g label="mol_3d">` group containing a single `<image>` element
+**Output:** a `<g label="mol_structure">` group containing a single `<image>` element
 with the PNG embedded as a `data:image/png;base64,...` URI.
 
 ## Critical parameters

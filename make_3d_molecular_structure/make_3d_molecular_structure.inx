@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-  <name>Make Molecular 3D</name>
-  <id>org.inkscape.generate.make_mol_3d</id>
+  <name>Make 3D Molecular Structure</name>
+  <id>org.inkscape.generate.make_3d_molecular_structure</id>
 
   <param name="tab" type="notebook">
 
@@ -78,6 +78,6 @@ Set manually if you prefer to use your own environment.</label>
   </effect>
 
   <script>
-    <command reldir="extensions" interpreter="python">make_mol_3d.py</command>
+    <command reldir="extensions" interpreter="python">make_3d_molecular_structure.py</command>
   </script>
 </inkscape-extension>

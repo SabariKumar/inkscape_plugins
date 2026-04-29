@@ -48,7 +48,7 @@ echo "    Done."
 # ── 2. Copy plugin files ────────────────────────────────────────────────────
 echo "==> Copying plugin files..."
 
-for plugin in make_clustered_points make_neural_network make_mol_graph make_mol_3d; do
+for plugin in make_clustered_points make_neural_network make_mol_graph make_3d_molecular_structure; do
     src="$SCRIPT_DIR/$plugin"
     if [ -d "$src" ]; then
         # Copy all .py and .inx files (skip README, pixi.toml, etc.)

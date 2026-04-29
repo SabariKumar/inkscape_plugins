@@ -13,7 +13,7 @@ All plugins appear under **Extensions → Generate** after deployment.
 | [`make_clustered_points`](make_clustered_points/README.md) | Rectangle filled with Gaussian-clustered points using the Nord palette | inkex only |
 | [`make_neural_network`](make_neural_network/README.md) | Stylized neural-network schematic from a comma-separated layer topology | inkex only |
 | [`make_mol_graph`](make_mol_graph/README.md) | 2D molecular graph from SMILES with pastel CPK colors and gray bonds | rdkit |
-| [`make_mol_3d`](make_mol_3d/README.md) | Ray-traced 3D ball-and-stick rendering with optional conformer ensembles | rdkit + pymol-open-source |
+| [`make_3d_molecular_structure`](make_3d_molecular_structure/README.md) | Ray-traced 3D ball-and-stick rendering with optional conformer ensembles | rdkit + pymol-open-source |
 
 The two molecular plugins call out to a shared [pixi](https://prefix.dev/) environment
 (`shared_env/`) for RDKit and PyMOL, since Inkscape's bundled Python cannot install
@@ -59,6 +59,6 @@ inkscape_plugins/
 ├── make_clustered_points/          Plugin (.py + .inx + README)
 ├── make_neural_network/            Plugin (.py + .inx + README)
 ├── make_mol_graph/                 Plugin (.py + .inx + README)
-├── make_mol_3d/                    Plugin (.py + .inx + README)
+├── make_3d_molecular_structure/    Plugin (.py + .inx + README)
 └── README.md                       This file
 ```

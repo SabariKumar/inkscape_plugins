@@ -205,7 +205,7 @@ try:
         png_b64 = base64.b64encode(fh.read()).decode()
 
     # Marker prefix so the plugin can pluck the JSON out of any PyMOL chatter
-    print("__MOL3D_JSON__" + json.dumps({"png_b64": png_b64, "width": width, "height": height}))
+    print("__MOL_STRUCT_JSON__" + json.dumps({"png_b64": png_b64, "width": width, "height": height}))
 
 finally:
     for p in cleanup_sdfs:
@@ -299,7 +299,7 @@ def _run_helper(python_cmd, input_type, mol_input,
 
         # PyMOL prints chatter to stdout. Look for the marker prefix; if absent,
         # fall back to parsing the whole stdout (early errors print plain JSON).
-        marker = "__MOL3D_JSON__"
+        marker = "__MOL_STRUCT_JSON__"
         idx = stdout.rfind(marker)
         payload = stdout[idx + len(marker):].splitlines()[0] if idx >= 0 else stdout.strip()
         return json.loads(payload)
@@ -325,7 +325,7 @@ def _run_helper(python_cmd, input_type, mol_input,
 # Extension
 # ---------------------------------------------------------------------------
 
-class MakeMol3D(inkex.EffectExtension):
+class Make3DMolecularStructure(inkex.EffectExtension):
     """
     Inkscape effect extension that embeds a ray-traced 3D molecular image via PyMOL.
 
@@ -428,7 +428,7 @@ class MakeMol3D(inkex.EffectExtension):
         H       = data["height"]
 
         # Embed as base64 <image> in the SVG
-        root = self.svg.add(Group.new(label="mol_3d"))
+        root = self.svg.add(Group.new(label="mol_structure"))
         img  = root.add(inkex.Image())
         img.set("x", "0")
         img.set("y", "0")
@@ -441,4 +441,4 @@ class MakeMol3D(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    MakeMol3D().run()
+    Make3DMolecularStructure().run()
