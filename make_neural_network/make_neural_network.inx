@@ -28,6 +28,27 @@
       <param name="v_spacing"   type="float" min="20" max="300" precision="1"
              gui-text="Vertical Node Spacing (px)">65</param>
     </page>
+
+    <page name="colors" gui-text="Colors">
+      <param name="color_mode" type="optiongroup" appearance="combo"
+             gui-text="Layer Color Mode">
+        <option value="default">Default (Nord cycle)</option>
+        <option value="random">Random (shuffled Nord)</option>
+        <option value="custom">Custom (specify per layer)</option>
+      </param>
+      <separator/>
+      <label xml:space="preserve">Used in Custom mode. Comma-separated Nord color names; the list cycles
+if there are more layers than colors. Available names:
+
+  frost_light_blue, frost_blue, frost_dark_blue, frost_teal,
+  aurora_red, aurora_orange, aurora_yellow, aurora_green, aurora_purple</label>
+      <param name="custom_colors" type="string"
+             gui-text="Custom Colors">frost_blue,aurora_red,frost_teal,aurora_purple</param>
+      <separator/>
+      <label>Used in Random mode for reproducible color assignments.</label>
+      <param name="color_seed" type="int" min="0" max="99999"
+             gui-text="Random Seed">42</param>
+    </page>
   </param>
 
   <effect>

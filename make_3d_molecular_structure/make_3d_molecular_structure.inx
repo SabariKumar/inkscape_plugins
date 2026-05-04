@@ -44,12 +44,21 @@ Requires SMILES input — ignored when Input Type is SDF File.</label>
 
     <page name="render" gui-text="Render">
       <param name="camera" type="optiongroup" appearance="combo"
-             gui-text="Camera Preset">
+             gui-text="Camera Preset (starting orientation)">
         <option value="default">PyMOL Default (auto-orient)</option>
         <option value="front">Front</option>
         <option value="top">Top</option>
         <option value="perspective">Perspective</option>
       </param>
+      <separator/>
+      <label xml:space="preserve">Additional rotations applied AFTER the preset.
+For planar molecules, ~25° on X and ~25° on Y gives a good depth-perception tilt.</label>
+      <param name="rot_x" type="float" min="-180" max="180" precision="1"
+             appearance="full" gui-text="Rotate X (°)">0</param>
+      <param name="rot_y" type="float" min="-180" max="180" precision="1"
+             appearance="full" gui-text="Rotate Y (°)">0</param>
+      <param name="rot_z" type="float" min="-180" max="180" precision="1"
+             appearance="full" gui-text="Rotate Z (°)">0</param>
       <separator/>
       <label>Output resolution at 600 DPI. e.g. 1800 x 1200 = 3" x 2".</label>
       <param name="render_width"  type="int" min="200" max="8000"

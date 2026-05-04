@@ -29,6 +29,9 @@ height            = int(sys.argv[6])
 show_ensemble     = sys.argv[7].lower() == 'true'
 num_conformers    = int(sys.argv[8])
 conf_transparency = float(sys.argv[9])
+rot_x             = float(sys.argv[10])
+rot_y             = float(sys.argv[11])
+rot_z             = float(sys.argv[12])
 DPI               = 600
 
 # Ensemble mode is only meaningful with SMILES (need to generate multiple confs)
@@ -192,6 +195,14 @@ try:
     elif camera == 'perspective':
         cmd.set('orthoscopic', 0)
 
+    # ── Free-form rotations (applied after the preset) ──────────────────────
+    if rot_x:
+        cmd.rotate('x', rot_x)
+    if rot_y:
+        cmd.rotate('y', rot_y)
+    if rot_z:
+        cmd.rotate('z', rot_z)
+
     # ── Ray-trace and save ──────────────────────────────────────────────────
     tmp_f = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
     tmp_f.close()
@@ -246,7 +257,8 @@ def _find_python(override: str) -> str:
 
 def _run_helper(python_cmd, input_type, mol_input,
                 show_h, camera, width, height,
-                show_ensemble, num_conformers, conf_transparency) -> dict:
+                show_ensemble, num_conformers, conf_transparency,
+                rot_x, rot_y, rot_z) -> dict:
     """
     Execute the PyMOL rendering helper in a subprocess and return base64 PNG data.
 
@@ -265,6 +277,9 @@ def _run_helper(python_cmd, input_type, mol_input,
         show_ensemble: bool : whether to render multiple conformers as overlays
         num_conformers: int : number of conformers to generate (used only when show_ensemble)
         conf_transparency: float : transparency [0..1] applied to non-lowest-energy conformers
+        rot_x: float : additional rotation around camera x-axis in degrees
+        rot_y: float : additional rotation around camera y-axis in degrees
+        rot_z: float : additional rotation around camera z-axis in degrees
     Returns:
         dict : {"png_b64": str, "width": int, "height": int} on success,
                or {"error": str} on failure
@@ -282,7 +297,8 @@ def _run_helper(python_cmd, input_type, mol_input,
              input_type, mol_input,
              str(show_h), camera,
              str(width), str(height),
-             str(show_ensemble), str(num_conformers), str(conf_transparency)],
+             str(show_ensemble), str(num_conformers), str(conf_transparency),
+             str(rot_x), str(rot_y), str(rot_z)],
             capture_output=True,
             text=True,
             timeout=300,   # ray-tracing can be slow
@@ -351,6 +367,9 @@ class Make3DMolecularStructure(inkex.EffectExtension):
         show_ensemble: bool : whether to render a conformer ensemble (SMILES input only)
         num_conformers: int : number of conformers to generate when show_ensemble is true
         conformer_transparency: float : transparency for overlay conformers (0 = opaque, 1 = invisible)
+        rot_x: float : extra rotation in degrees around the camera x-axis (after the preset)
+        rot_y: float : extra rotation in degrees around the camera y-axis (after the preset)
+        rot_z: float : extra rotation in degrees around the camera z-axis (after the preset)
         python_cmd: str : override path for the RDKit/PyMOL interpreter; blank = auto-detect
     """
 
@@ -374,6 +393,9 @@ class Make3DMolecularStructure(inkex.EffectExtension):
         pars.add_argument("--show_ensemble",          type=inkex.Boolean, default=False)
         pars.add_argument("--num_conformers",         type=int,           default=10)
         pars.add_argument("--conformer_transparency", type=float,         default=0.7)
+        pars.add_argument("--rot_x",                  type=float,         default=0.0)
+        pars.add_argument("--rot_y",                  type=float,         default=0.0)
+        pars.add_argument("--rot_z",                  type=float,         default=0.0)
         pars.add_argument("--python_cmd",             type=str,           default="")
 
     def effect(self):
@@ -417,6 +439,9 @@ class Make3DMolecularStructure(inkex.EffectExtension):
             o.show_ensemble,
             o.num_conformers,
             o.conformer_transparency,
+            o.rot_x,
+            o.rot_y,
+            o.rot_z,
         )
 
         if "error" in data:
