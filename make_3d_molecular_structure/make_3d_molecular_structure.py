@@ -32,6 +32,7 @@ conf_transparency = float(sys.argv[9])
 rot_x             = float(sys.argv[10])
 rot_y             = float(sys.argv[11])
 rot_z             = float(sys.argv[12])
+export_separately = sys.argv[13].lower() == 'true'
 DPI               = 600
 
 # Ensemble mode is only meaningful with SMILES (need to generate multiple confs)
@@ -112,7 +113,6 @@ else:  # 'sdf'
     # not added to cleanup_sdfs — user-provided file, do not delete
 
 # ── Step 2: PyMOL render ────────────────────────────────────────────────────
-tmp_png = None
 try:
     try:
         import pymol
@@ -180,8 +180,10 @@ try:
     cmd.set("depth_cue", "off")
     preset.ball_and_stick(selection='all', mode=1)
 
-    # ── Ensemble transparency: opaque conf_0, transparent overlays ──────────
-    if len(sdf_paths) > 1:
+    # Apply ensemble transparency only when rendering all conformers in one image.
+    # In separate-export mode the conformers must stay opaque — the user controls
+    # alpha per <image> in Inkscape afterwards.
+    if len(sdf_paths) > 1 and not export_separately:
         for i in range(1, len(sdf_paths)):
             cmd.set("sphere_transparency", conf_transparency, f"conf_{i}")
             cmd.set("stick_transparency",  conf_transparency, f"conf_{i}")
@@ -203,27 +205,62 @@ try:
     if rot_z:
         cmd.rotate('z', rot_z)
 
-    # ── Ray-trace and save ──────────────────────────────────────────────────
-    tmp_f = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-    tmp_f.close()
-    tmp_png = tmp_f.name
+    tmp_pngs = []
+    try:
+        if export_separately and len(sdf_paths) > 1:
+            # ── Multi-render path ───────────────────────────────────────────
+            # Lock the camera and re-use it for each per-conformer render so all
+            # output images share the same frame. Without set_view between
+            # renders, ray() can subtly nudge the camera matrix.
+            saved_view = cmd.get_view()
+            png_list = []
+            for i in range(len(sdf_paths)):
+                cmd.disable('all')
+                cmd.enable(f"conf_{i}")
+                cmd.set_view(saved_view)
 
-    cmd.png(tmp_png, width=width, height=height, dpi=DPI, ray=1)
-    cmd.quit()
-    time.sleep(0.5)
+                tmp_f = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                tmp_f.close()
+                tmp_pngs.append(tmp_f.name)
 
-    with open(tmp_png, 'rb') as fh:
-        png_b64 = base64.b64encode(fh.read()).decode()
+                cmd.png(tmp_f.name, width=width, height=height, dpi=DPI, ray=1)
+                time.sleep(0.2)
 
-    # Marker prefix so the plugin can pluck the JSON out of any PyMOL chatter
-    print("__MOL_STRUCT_JSON__" + json.dumps({"png_b64": png_b64, "width": width, "height": height}))
+                with open(tmp_f.name, 'rb') as fh:
+                    png_list.append(base64.b64encode(fh.read()).decode())
+
+            cmd.quit()
+            time.sleep(0.5)
+            print("__MOL_STRUCT_JSON__" + json.dumps({
+                "png_b64_list": png_list, "width": width, "height": height,
+            }))
+
+        else:
+            # ── Single-render path (one PNG, optional baked-in transparency) ─
+            tmp_f = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            tmp_f.close()
+            tmp_pngs.append(tmp_f.name)
+
+            cmd.png(tmp_f.name, width=width, height=height, dpi=DPI, ray=1)
+            cmd.quit()
+            time.sleep(0.5)
+
+            with open(tmp_f.name, 'rb') as fh:
+                png_b64 = base64.b64encode(fh.read()).decode()
+
+            print("__MOL_STRUCT_JSON__" + json.dumps({
+                "png_b64": png_b64, "width": width, "height": height,
+            }))
+
+    finally:
+        for p in tmp_pngs:
+            if p and os.path.exists(p):
+                os.unlink(p)
 
 finally:
     for p in cleanup_sdfs:
         if p and os.path.exists(p):
             os.unlink(p)
-    if tmp_png and os.path.exists(tmp_png):
-        os.unlink(tmp_png)
 """
 
 
@@ -258,7 +295,7 @@ def _find_python(override: str) -> str:
 def _run_helper(python_cmd, input_type, mol_input,
                 show_h, camera, width, height,
                 show_ensemble, num_conformers, conf_transparency,
-                rot_x, rot_y, rot_z) -> dict:
+                rot_x, rot_y, rot_z, export_separately) -> dict:
     """
     Execute the PyMOL rendering helper in a subprocess and return base64 PNG data.
 
@@ -280,9 +317,12 @@ def _run_helper(python_cmd, input_type, mol_input,
         rot_x: float : additional rotation around camera x-axis in degrees
         rot_y: float : additional rotation around camera y-axis in degrees
         rot_z: float : additional rotation around camera z-axis in degrees
+        export_separately: bool : when True with ensemble enabled, return one PNG per conformer
     Returns:
-        dict : {"png_b64": str, "width": int, "height": int} on success,
-               or {"error": str} on failure
+        dict : on success, either
+               {"png_b64": str, "width": int, "height": int}                      (single render) or
+               {"png_b64_list": list[str], "width": int, "height": int}           (separate exports);
+               on failure, {"error": str}
     """
     tmp_path = None
     try:
@@ -298,10 +338,13 @@ def _run_helper(python_cmd, input_type, mol_input,
              str(show_h), camera,
              str(width), str(height),
              str(show_ensemble), str(num_conformers), str(conf_transparency),
-             str(rot_x), str(rot_y), str(rot_z)],
+             str(rot_x), str(rot_y), str(rot_z),
+             str(export_separately)],
             capture_output=True,
             text=True,
-            timeout=300,   # ray-tracing can be slow
+            # Each ray-trace can take 10-30s. Allow more headroom in multi-render
+            # mode since each conformer is rendered independently.
+            timeout=900 if export_separately else 300,
         )
         stdout = result.stdout
         if not stdout.strip():
@@ -370,6 +413,9 @@ class Make3DMolecularStructure(inkex.EffectExtension):
         rot_x: float : extra rotation in degrees around the camera x-axis (after the preset)
         rot_y: float : extra rotation in degrees around the camera y-axis (after the preset)
         rot_z: float : extra rotation in degrees around the camera z-axis (after the preset)
+        export_separately: bool : when ensemble is on, render each conformer as its own
+                                  fully-opaque PNG embedded as a labeled <image> in the SVG,
+                                  letting the user adjust per-conformer opacity in Inkscape
         python_cmd: str : override path for the RDKit/PyMOL interpreter; blank = auto-detect
     """
 
@@ -396,6 +442,7 @@ class Make3DMolecularStructure(inkex.EffectExtension):
         pars.add_argument("--rot_x",                  type=float,         default=0.0)
         pars.add_argument("--rot_y",                  type=float,         default=0.0)
         pars.add_argument("--rot_z",                  type=float,         default=0.0)
+        pars.add_argument("--export_separately",      type=inkex.Boolean, default=False)
         pars.add_argument("--python_cmd",             type=str,           default="")
 
     def effect(self):
@@ -442,27 +489,41 @@ class Make3DMolecularStructure(inkex.EffectExtension):
             o.rot_x,
             o.rot_y,
             o.rot_z,
+            o.export_separately,
         )
 
         if "error" in data:
             inkex.errormsg(data["error"])
             return
 
-        png_b64 = data["png_b64"]
-        W       = data["width"]
-        H       = data["height"]
+        W = data["width"]
+        H = data["height"]
+        XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 
-        # Embed as base64 <image> in the SVG
-        root = self.svg.add(Group.new(label="mol_structure"))
-        img  = root.add(inkex.Image())
-        img.set("x", "0")
-        img.set("y", "0")
-        img.set("width",  str(W))
-        img.set("height", str(H))
-        # Set both href forms for maximum Inkscape compatibility
-        img.set("href", f"data:image/png;base64,{png_b64}")
-        img.set("{http://www.w3.org/1999/xlink}href",
-                f"data:image/png;base64,{png_b64}")
+        def _embed(parent, png_b64):
+            """Insert a single base64 PNG <image> element into parent."""
+            img = parent.add(inkex.Image())
+            img.set("x", "0")
+            img.set("y", "0")
+            img.set("width",  str(W))
+            img.set("height", str(H))
+            data_uri = f"data:image/png;base64,{png_b64}"
+            # Set both href forms for maximum Inkscape compatibility
+            img.set("href", data_uri)
+            img.set(XLINK_HREF, data_uri)
+            return img
+
+        if "png_b64_list" in data:
+            # Multi-render path: each conformer becomes its own labeled subgroup
+            # so the user can target it from the Objects panel and adjust opacity.
+            root = self.svg.add(Group.new(label="mol_structure_conformers"))
+            for i, png_b64 in enumerate(data["png_b64_list"]):
+                tag = "conformer_1_lowest_energy" if i == 0 else f"conformer_{i + 1}"
+                g = root.add(Group.new(label=tag))
+                _embed(g, png_b64)
+        else:
+            root = self.svg.add(Group.new(label="mol_structure"))
+            _embed(root, data["png_b64"])
 
 
 if __name__ == "__main__":

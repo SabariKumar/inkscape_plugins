@@ -40,6 +40,13 @@ Requires SMILES input — ignored when Input Type is SDF File.</label>
              gui-text="Number of Conformers">10</param>
       <param name="conformer_transparency" type="float" min="0" max="0.95" precision="2"
              appearance="full" gui-text="Overlay Transparency">0.7</param>
+      <separator/>
+      <label xml:space="preserve">Alternative export mode: emit each conformer as its own opaque,
+labeled image in the SVG so you can adjust opacity per-conformer
+manually in Inkscape's Object Properties. Overrides the Overlay
+Transparency slider above. Slower (one ray-trace per conformer).</label>
+      <param name="export_separately" type="bool"
+             gui-text="Export conformers as separate images">false</param>
     </page>
 
     <page name="render" gui-text="Render">
@@ -79,7 +86,7 @@ Set manually if you prefer to use your own environment.</label>
 
   </param>
 
-  <effect>
+  <effect needs-live-preview="false">
     <object-type>all</object-type>
     <effects-menu>
       <submenu name="Generate"/>
