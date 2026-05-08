@@ -65,12 +65,24 @@ if input_type == 'smiles':
             print(json.dumps({"error": "RDKit failed to embed any conformers."}))
             sys.exit(0)
 
-        # results: [(converged_flag, energy), ...] in conf_id order
-        results = AllChem.MMFFOptimizeMoleculeConfs(mol)
-        scored = [(cid, results[i][1]) for i, cid in enumerate(conf_ids)
-                  if results[i][0] == 0]
+        # results: [(flag, energy), ...] in conf_id order, where flag is
+        #   0 = converged, 1 = hit iteration cap, -1 = MMFF setup failure.
+        # Default maxIters=200 is too low for flexible / cyclic molecules; the
+        # geometry is still meaningful when the cap is hit, so we accept those
+        # too and only reject true setup failures.
+        results = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000)
+        scored = []
+        for i, cid in enumerate(conf_ids):
+            if i >= len(results):
+                continue
+            flag, energy = results[i]
+            if flag == -1 or energy is None or energy != energy:  # NaN guard
+                continue
+            scored.append((cid, energy))
         if not scored:
-            print(json.dumps({"error": "MMFF did not converge for any conformer."}))
+            print(json.dumps({"error":
+                "MMFF could not produce any usable energies "
+                "(force field setup failed for this molecule)."}))
             sys.exit(0)
         scored.sort(key=lambda x: x[1])     # ascending energy
 
